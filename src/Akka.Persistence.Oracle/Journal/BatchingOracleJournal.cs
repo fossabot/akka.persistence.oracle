@@ -20,7 +20,7 @@ using Oracle.ManagedDataAccess.Client;
 
 namespace Akka.Persistence.Oracle.Journal
 {
-    public class BatchingOracleJournal : BatchingSqlJournal<OracleConnection, OracleCommand>
+    public class BatchingOracleJournal : BatchingSqlJournalFixed<OracleConnection, OracleCommand>
     {
         private readonly Akka.Serialization.Serialization serialization;
 

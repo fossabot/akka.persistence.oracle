@@ -1,10 +1,10 @@
 ﻿using System;
-using System.Diagnostics;
-using System.Linq;
-using System.Threading.Tasks;
 using Akka.Actor;
 using Akka.Configuration;
-using Akka.Pattern;
+using Akka.Persistence.Query;
+using Akka.Persistence.Query.Sql;
+using Akka.Streams;
+using Akka.Streams.Dsl;
 
 namespace Benchmark
 {
@@ -21,7 +21,7 @@ namespace Benchmark
                     oracle {
                         class = ""Akka.Persistence.Oracle.Journal.BatchingOracleJournal, Akka.Persistence.Oracle""
                         plugin-dispatcher = ""akka.actor.default-dispatcher""
-                        table-name = EVENTJOURNAL
+                        table-name = INV_EVENTJOURNAL
                         schema-name = AKKA_PERSISTENCE_TEST
                         auto-initialize = on
                         connection-string-name = ""TestDb""
@@ -30,71 +30,46 @@ namespace Benchmark
                         max-concurrent-operations = 64
                         max-batch-size = 100
                         circuit-breaker {
-                            max-failures = 10
-                            call-timeout = 30s
-                            reset-timeout = 30s
+                            max-failures = 3
+                            call-timeout = 10s
+                            reset-timeout = 10s
                         }
                     }
                 }
             }");
 
-        public const int ActorCount = 1000;
-        public const int MessagesPerActor = 100;
+        public const int ActorCount = 1;
+        public const int MessagesPerActor = 10;
 
         private static void Main(string[] args)
         {
-            using (var system = ActorSystem.Create("persistent-benchmark", Config.WithFallback(ConfigurationFactory.Default())))
-            {
-                Console.WriteLine("Performance benchmark starting...");
+            var system = ActorSystem.Create("persistent-benchmark", Config.WithFallback(ConfigurationFactory.Default()));
 
-                var stopwatch = new Stopwatch();
-
-                var actors = new IActorRef[ActorCount];
-                for (var i = 0; i < ActorCount; i++)
+            var mat = ActorMaterializer.Create(system);
+            var backoffSource = RestartSource.WithBackoff(() =>
                 {
-                    var pid = "a-" + i;
-                    actors[i] = system.ActorOf(Props.Create(() => new PerformanceTestActor(pid)));
-                }
+                    Console.WriteLine("Starting stream...");
 
-                stopwatch.Start();
+                    return PersistenceQuery.Get(system)
+                        .ReadJournalFor<SqlReadJournal>(SqlReadJournal.Identifier)
+                        .EventsByPersistenceId("a-1", 0L, long.MaxValue)
+                        .Throttle(3, TimeSpan.FromSeconds(3), 3, ThrottleMode.Shaping)
+                        .Log("Log", e =>
+                        {
+                            Console.WriteLine(e.SequenceNr);
+                            return e;
+                        });
+                },
+                minBackoff: TimeSpan.FromSeconds(10),
+                maxBackoff: TimeSpan.FromSeconds(30),
+                randomFactor: 0.2);
 
-                Task.WaitAll(actors.Select(a => a.Ask<Done>(Init.Instance)).Cast<Task>().ToArray());
-
-                stopwatch.Stop();
-
-                Console.WriteLine($"Initialized {ActorCount} eventsourced actors in {stopwatch.ElapsedMilliseconds / 1000.0} sec...");
-
-                stopwatch.Start();
-
-                for (var i = 0; i < MessagesPerActor; i++)
-                {
-                    for (var j = 0; j < ActorCount; j++)
-                    {
-                        actors[j].Tell(new Store(1));
-                    }
-                }
-
-                var finished = new Task[ActorCount];
-                for (var i = 0; i < ActorCount; i++)
-                {
-                    finished[i] = actors[i].Ask<Finished>(Finish.Instance);
-                }
-
-                Task.WaitAll(finished);
-
-                stopwatch.Stop();
-                var elapsed = stopwatch.ElapsedMilliseconds;
-
-                Console.WriteLine($"{ActorCount} actors stored {MessagesPerActor} events each in {elapsed / 1000.0} sec. Average: {ActorCount * MessagesPerActor * 1000.0 / elapsed} events/sec");
-
-                if (finished.Cast<Task<Finished>>().Any(task => !task.IsCompleted || task.Result.State != MessagesPerActor))
-                {
-                    throw new IllegalStateException("Actor's state was invalid");
-                }
-            }
+            backoffSource.RunWith(Sink.Ignore<EventEnvelope>(), mat);
 
             Console.WriteLine("Press Enter to exit...");
             Console.ReadLine();
+
+            system.Terminate();
         }
     }
 }

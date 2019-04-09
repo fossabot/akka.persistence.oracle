@@ -34,7 +34,7 @@ let envBuildNumber = System.Environment.GetEnvironmentVariable("BUILD_NUMBER")
 let buildNumber = if String.IsNullOrWhiteSpace(envBuildNumber) then "0" else envBuildNumber
 
 let version = parsedRelease.AssemblyVersion //+ "." + buildNumber
-let preReleaseVersion = version //+ "-beta"
+let preReleaseVersion = version + "-beta71"
 
 let isUnstableDocs = hasBuildParam "unstable"
 let isPreRelease = hasBuildParam "nugetprerelease"
@@ -86,7 +86,6 @@ Target "AssemblyInfo" <| fun _ ->
 // Build the solution
 
 Target "Build" <| fun _ ->
-
     !! slnFile
     |> MSBuildRelease "" "Rebuild"
     |> ignore
@@ -95,8 +94,7 @@ Target "Build" <| fun _ ->
 // Copy the build output to bin directory
 //--------------------------------------------------------------------------------
 
-Target "CopyOutput" <| fun _ ->
-    
+Target "CopyOutput" <| fun _ ->    
     let copyOutput project =
         let src = "src" @@ project @@ @"bin/Release/"
         let dst = binDir @@ project
@@ -186,7 +184,7 @@ let updateNugetPackages _ =
 
 Target "UpdateDependencies" <| fun _ ->
     printfn "Invoking updateNugetPackages"
-    updateNugetPackages()
+    //updateNugetPackages()
 
 //--------------------------------------------------------------------------------
 // Clean nuget directory
@@ -263,7 +261,6 @@ let createNugetPackages _ =
         // Create both normal nuget package and symbols nuget package. 
         // Uses the files we copied to workingDir and outputs to nugetdir
         pack nugetDir NugetSymbolPackage.Nuspec
-
 
 let publishNugetPackages _ = 
     let rec publishPackage url accessKey trialsLeft packageFile =
