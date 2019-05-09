@@ -783,7 +783,7 @@ namespace Akka.Persistence.Sql.Common.Journal
         private async Task HandleWriteMessages(WriteMessages req, TCommand command)
         {
             IJournalResponse summary = null;
-            var responses = new List<IJournalResponse>();
+            var responses = new List<Tuple<IJournalResponse, IActorRef>>();
             var tags = new HashSet<string>();
             var persistenceIds = new HashSet<string>();
             var actorInstanceId = req.ActorInstanceId;
@@ -827,7 +827,7 @@ namespace Akka.Persistence.Sql.Common.Journal
 
                                 await command.ExecuteNonQueryAsync();
 
-                                var response = new WriteMessageSuccess(unadapted, actorInstanceId);
+                                var response = Tuple.Create<IJournalResponse, IActorRef>(new WriteMessageSuccess(unadapted, actorInstanceId), unadapted.Sender);
                                 responses.Add(response);
                                 persistenceIds.Add(persistent.PersistenceId);
 
@@ -837,7 +837,7 @@ namespace Akka.Persistence.Sql.Common.Journal
                             {
                                 // database-related exceptions should result in failure
                                 summary = new WriteMessagesFailed(cause);
-                                var response = new WriteMessageFailure(unadapted, cause, actorInstanceId);
+                                var response = Tuple.Create<IJournalResponse, IActorRef>(new WriteMessageFailure(unadapted, cause, actorInstanceId), unadapted.Sender);
                                 responses.Add(response);
                             }
                             catch (Exception cause)
@@ -845,7 +845,7 @@ namespace Akka.Persistence.Sql.Common.Journal
                                 //TODO: this scope wraps atomic write. Atomic writes have all-or-nothing commits.
                                 // so we should revert transaction here. But we need to check how this affect performance.
 
-                                var response = new WriteMessageRejected(unadapted, cause, actorInstanceId);
+                                var response = Tuple.Create<IJournalResponse, IActorRef>(new WriteMessageRejected(unadapted, cause, actorInstanceId), unadapted.Sender);
                                 responses.Add(response);
                             }
                         }
@@ -853,7 +853,7 @@ namespace Akka.Persistence.Sql.Common.Journal
                     else
                     {
                         //TODO: other cases?
-                        var response = new LoopMessageSuccess(envelope.Payload, actorInstanceId);
+                        var response = Tuple.Create<IJournalResponse, IActorRef>(new LoopMessageSuccess(envelope.Payload, actorInstanceId), envelope.Sender);
                         responses.Add(response);
                     }
                 }
@@ -886,7 +886,7 @@ namespace Akka.Persistence.Sql.Common.Journal
             aref.Tell(summary);
             foreach (var response in responses)
             {
-                aref.Tell(response);
+                aref.Tell(response.Item1, response.Item2);
             }
         }
 

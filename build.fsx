@@ -34,7 +34,7 @@ let envBuildNumber = System.Environment.GetEnvironmentVariable("BUILD_NUMBER")
 let buildNumber = if String.IsNullOrWhiteSpace(envBuildNumber) then "0" else envBuildNumber
 
 let version = parsedRelease.AssemblyVersion //+ "." + buildNumber
-let preReleaseVersion = version + "-beta71"
+let preReleaseVersion = version + "-beta72"
 
 let isUnstableDocs = hasBuildParam "unstable"
 let isPreRelease = hasBuildParam "nugetprerelease"

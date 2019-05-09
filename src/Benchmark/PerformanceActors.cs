@@ -82,6 +82,7 @@ namespace Benchmark
                 {
                     state += s.Value;
                     sender.Tell(Done.Instance);
+                    Sender.Tell(Done.Instance);
                 });
             })
             .With<Finish>(_ => Sender.Tell(new Finished(state)))
